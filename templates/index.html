@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Amadeus - Shiroko</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="glass-header">
+            <div class="header-profile">
+                <div class="avatar-container">
+                    <div class="avatar"></div>
+                    <div class="status-indicator"></div>
+                </div>
+                <div class="header-info">
+                    <h1>Sunaookami Shiroko</h1>
+                    <span class="status-text">Online • Sistem Amadeus</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="icon-btn" title="Menu">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Chat Area -->
+        <main class="chat-area" id="chat-box">
+            <div class="message received">
+                <div class="message-content">
+                    <p>Nn, halo Sensei. Ada yang bisa kubantu hari ini?</p>
+                </div>
+                <span class="timestamp">Sekarang</span>
+            </div>
+        </main>
+
+        <!-- Input Area -->
+        <footer class="input-area glass-footer">
+            <form id="chat-form">
+                <input type="text" id="user-input" placeholder="Ketik pesan untuk Shiroko..." autocomplete="off"
+                    required>
+                <button type="submit" id="send-btn" class="send-btn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </form>
+        </footer>
+    </div>
+
+    <!-- Audio Player (Hidden) -->
+    <audio id="tts-audio" style="display:none;"></audio>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Pengaturan API</h2>
+                <button class="close-btn" id="close-settings">&times;</button>
+            </div>
+            <form id="settings-form">
+                <div class="input-group">
+                    <label for="groq-key">Groq API Key</label>
+                    <input type="password" id="groq-key" placeholder="gsk_..." required>
+                </div>
+                <div class="input-group">
+                    <label for="tts-url">GPT-SoVITS API URL</label>
+                    <input type="text" id="tts-url" placeholder="http://127.0.0.1:9880" required>
+                    <small>Ganti dengan URL Ngrok jika menggunakan Google Colab.</small>
+                </div>
+                <button type="submit" class="save-btn" id="save-settings-btn">Simpan Pengaturan</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
