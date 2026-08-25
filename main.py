@@ -1,32 +1,40 @@
-import requests
-import io
 import os
-import urllib.parse
+import io
 import time
+import urllib.parse
 import re
+import requests
+from flask import Flask, render_template, request, jsonify, send_file
+from groq import Groq
 
-try:
-    os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
-    import pygame
-except ImportError:
-    print("Library belum lengkap. Silakan jalankan:")
-    print("pip install pygame requests groq")
-    exit()
-
-try:
-    from groq import Groq
-except ImportError:
-    print("Library Groq belum ter-install. Silakan buka terminal baru dan jalankan:")
-    print("pip install groq")
-    exit()
+import json
 
 # ==========================================
-# PENGATURAN API AI (GROQ)
+# KONFIGURASI FLASK
 # ==========================================
-GROQ_API_KEY = ""
-client = Groq(api_key=GROQ_API_KEY)
-# Menggunakan LLaMA 3 dari Groq (Sangat cepat dan gratis)
-MODEL_NAME = "groq/compound"
+app = Flask(__name__)
+app.config['JSON_AS_ASCII'] = False
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {
+        "groq_api_key": "",
+        "tts_api_url": "http://127.0.0.1:9880"
+    }
+
+def save_config(config_data):
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(config_data, f, indent=4)
+
+# Inisialisasi klien awal
+cfg = load_config()
+os.environ["GROQ_API_KEY"] = cfg.get("groq_api_key", "")
+client = Groq()
 
 # Prompt karakter untuk Shiroko
 system_instruction = """
@@ -43,7 +51,6 @@ JEPANG: ん、先生、こんにちは。
 INDONESIA: Nn, halo Sensei.
 """
 
-# Menyimpan riwayat chat (Memory)
 chat_history = [
     {"role": "system", "content": system_instruction}
 ]
@@ -51,35 +58,18 @@ chat_history = [
 # ==========================================
 # KONFIGURASI GPT-SoVITS
 # ==========================================
-API_BASE = "http://127.0.0.1:9880"
-API_URL = f"{API_BASE}/tts"
-
-# Path dinamis yang selalu mengikuti lokasi folder Amadeus
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-GPT_WEIGHT = os.path.join(BASE_DIR, "models", "Shiroko-e15.ckpt")
-SOVITS_WEIGHT = os.path.join(BASE_DIR, "models", "Shiroko_e8_s280.pth")
-
+# Menggunakan parameter referensi dari main.py
 REF_AUDIO = os.path.join(BASE_DIR, "tts", "piper_dataset", "wavs", "02_Shiroko_Gachaget.wav")
-REF_TEXT = "アビドス対策委員会２年生砂狼シロコ。よろしく。"
+REF_TEXT = "あ、私と、相性が良さそうだね。よろしく、先生。"
 REF_LANG = "ja"
 
+# Folder untuk menyimpan cache audio agar bisa diakses website
+AUDIO_DIR = os.path.join(BASE_DIR, "static", "audio")
+if not os.path.exists(AUDIO_DIR):
+    os.makedirs(AUDIO_DIR)
 
-def init_models():
-    print("[Memuat Model Suara Shiroko ke API...]")
-    try:
-        req_gpt = requests.get(f"{API_BASE}/set_gpt_weights?weights_path={GPT_WEIGHT}")
-        req_sovits = requests.get(f"{API_BASE}/set_sovits_weights?weights_path={SOVITS_WEIGHT}")
-        if req_gpt.status_code == 200 and req_sovits.status_code == 200:
-            print("[Model Suara Berhasil Dimuat!]")
-            return True
-        else:
-            print(f"Error memuat model: {req_gpt.text} | {req_sovits.text}")
-            return False
-    except Exception as e:
-        print(f"Gagal konek ke GPT-SoVITS API. Pastikan start_api.bat berjalan. Error: {e}")
-        return False
-
-def get_shiroko_voice(text):
+def get_shiroko_voice(text, filename, tts_base_url):
+    api_url = f"{tts_base_url}/tts"
     params = {
         "text": urllib.parse.unquote(text),
         "text_lang": "ja", 
@@ -89,84 +79,91 @@ def get_shiroko_voice(text):
     }
     
     try:
-        response = requests.get(API_URL, params=params)
+        response = requests.get(api_url, params=params)
         if response.status_code == 200:
-            return response.content
+            filepath = os.path.join(AUDIO_DIR, filename)
+            with open(filepath, "wb") as f:
+                f.write(response.content)
+            return True
         else:
-            return None
+            return False
     except Exception as e:
-        return None
+        print(f"Error TTS: {e}")
+        return False
 
-def play_audio(audio_bytes):
-    pygame.mixer.init()
-    audio_stream = io.BytesIO(audio_bytes)
-    pygame.mixer.music.load(audio_stream)
-    pygame.mixer.music.play()
-    while pygame.mixer.music.get_busy():
-        pygame.time.Clock().tick(10)
+# ==========================================
+# ROUTES WEBSITE
+# ==========================================
+@app.route("/")
+def index():
+    return render_template("index.html")
 
-def main():
-    print("="*50)
-    print("  Chatbot Shiroko AI (Groq LLaMA) + Suara TTS  ")
-    print("="*50)
+@app.route("/api/settings", methods=["GET", "POST"])
+def settings_api():
+    if request.method == "POST":
+        data = request.json
+        save_config(data)
+        # Update klien
+        os.environ["GROQ_API_KEY"] = data.get("groq_api_key", "")
+        global client
+        client = Groq()
+        return jsonify({"status": "success"})
+    return jsonify(load_config())
+
+@app.route("/api/chat", methods=["POST"])
+def chat():
+    config = load_config()
+    data = request.json
+    user_input = data.get("message", "")
     
-    time.sleep(1)
-    if not init_models():
-        return
+    if not user_input.strip():
+        return jsonify({"error": "Pesan kosong"}), 400
+
+    chat_history.append({"role": "user", "content": user_input})
+
+    try:
+        completion = client.chat.completions.create(
+            model="groq/compound", # Atau qwen/qwen3.6-27b
+            messages=chat_history,
+            temperature=0.7,
+            max_tokens=256
+        )
+
+        reply = completion.choices[0].message.content
+        chat_history.append({"role": "assistant", "content": reply})
+
+        # Parsing respons (Berdasarkan format "JEPANG:" dan "INDONESIA:")
+        jap_text = ""
+        indo_text = ""
         
-    print("\n[AI Ready] Ketik 'keluar' untuk berhenti.\n")
-    
-    while True:
-        user_input = input("Sensei: ")
-        if user_input.lower() in ['keluar', 'exit', 'quit']:
-            break
+        for line in reply.split("\n"):
+            line = line.strip()
+            if line.upper().startswith("JEPANG:"):
+                jap_text = line[7:].strip()
+            elif line.upper().startswith("INDONESIA:"):
+                indo_text = line[10:].strip()
+                
+        # Fallback jika model tidak mengikuti format
+        if not jap_text and not indo_text:
+            jap_text = "ん、エラーが発生した。"
+            indo_text = "Nn, aku kurang mengerti Sensei."
 
-        try:
-            # Tambahkan ke riwayat chat
-            chat_history.append({"role": "user", "content": user_input})
-            
-            # Memanggil API Groq
-            completion = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=chat_history,
-                temperature=0.6,
-                max_tokens=150,
-                top_p=0.9,
-            )
-            
-            bot_reply = completion.choices[0].message.content.strip()
-            
-            # Simpan balasan AI ke riwayat
-            chat_history.append({"role": "assistant", "content": bot_reply})
-            
-            jp_text = ""
-            id_text = ""
-            
-            # Parse Regex Sederhana
-            match_jp = re.search(r'JEPANG:\s*(.+)', bot_reply, re.IGNORECASE)
-            if match_jp:
-                jp_text = match_jp.group(1).strip()
-            
-            match_id = re.search(r'INDONESIA:\s*(.+)', bot_reply, re.IGNORECASE)
-            if match_id:
-                id_text = match_id.group(1).strip()
-                
-            if not jp_text or not id_text:
-                jp_text = "ん、わかった。"
-                id_text = "(Parse Gagal) " + bot_reply
-                
-            jp_text = jp_text.replace('*', '').replace('`', '')
-            id_text = id_text.replace('*', '').replace('`', '')
+        # Menghasilkan Audio
+        audio_filename = f"reply_{int(time.time())}.wav"
+        success = get_shiroko_voice(jap_text, audio_filename, config.get("tts_api_url", "http://127.0.0.1:9880"))
+        audio_url = f"/static/audio/{audio_filename}" if success else None
 
-            print(f"Shiroko: {id_text}")
-            
-            # Panggil API TTS dengan teks Jepang
-            audio = get_shiroko_voice(jp_text)
-            if audio:
-                play_audio(audio)
-                
-        except Exception as e:
-            print(f"Terjadi kesalahan pada AI Groq: {e}")
+        return jsonify({
+            "indo_text": indo_text,
+            "jap_text": jap_text,
+            "audio_url": audio_url
+        })
+        
+    except Exception as e:
+        print("Groq Error:", e)
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    main()
+    # Menjalankan server Flask di port 5000
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
